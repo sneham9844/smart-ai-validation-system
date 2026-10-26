@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Validation | Smart AICTE Prototype</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+    <div class="brand">
+        <div class="logo">A</div>
+        <div>
+            <h2>SMART-AI</h2>
+            <p>Application Validation System</p>
+        </div>
+    </div>
+    <div class="account-nav">
+        <span class="demo">{{ session.username }} · {{ session.role }}</span>
+        <form method="post" action="{{ url_for('logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="logout-button" type="submit">Log out</button>
+        </form>
+    </div>
+</header>
+
+<main class="container">
+    <section class="welcome">
+        <div>
+            <p class="eyebrow">SYNTHETIC DEMO DOCUMENTS ONLY</p>
+            <h1>Document Validation</h1>
+            <p>Extract text and check sample required fields for a reviewer.</p>
+        </div>
+        {% if session.role == "Reviewer" %}
+        <a class="button-link button-secondary" href="{{ url_for('dashboard') }}">Back to dashboard</a>
+        {% else %}
+        <a class="button-link button-secondary" href="{{ url_for('institution_portal') }}">Institution home</a>
+        {% endif %}
+    </section>
+
+    <div class="notice">
+        <strong>Demo only:</strong>
+        Upload synthetic sample files only. Files are checked in memory and are not saved.
+        This checks required fields only; it does not prove document authenticity or make official approval decisions.
+        No live AICTE system is connected.
+    </div>
+
+    <section class="panel upload-panel">
+        <div class="panel-heading">
+            <h2>Upload a document</h2>
+            <p>Supported formats: PDF and UTF-8 TXT. Maximum size: {{ max_upload_mb }} MB.</p>
+        </div>
+
+        {% if error %}
+        <div class="validation-message error-message" role="alert">{{ error }}</div>
+        {% endif %}
+
+        <form class="upload-form" method="post" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="document">Select a PDF or TXT file</label>
+            <input id="document" name="document" type="file" accept=".pdf,.txt,application/pdf,text/plain" required>
+            <button type="submit">Check sample fields</button>
+        </form>
+    </section>
+
+    <section class="panel rules-panel">
+        <div class="panel-heading">
+            <h2>Sample required-field rules</h2>
+            <p>A field is present when its label and a non-empty value appear on a line, for example <code>Application ID: DEMO-001</code>.</p>
+        </div>
+        <ul class="rules-list">
+            {% for field in sample_required_fields %}
+            <li>{{ field }}</li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    {% if result %}
+    <section class="panel results-panel" aria-live="polite">
+        <div class="panel-heading">
+            <h2>Validation Report</h2>
+            <p>Required-field review for the uploaded synthetic demo document.</p>
+        </div>
+
+        <div class="report-status {{ 'report-complete' if result.status == 'Complete' else 'report-incomplete' }}">
+            <span>Overall status</span>
+            <strong>{{ result.status }}</strong>
+        </div>
+
+        <div class="risk-indicator risk-{{ result.risk_level|lower }}">
+            <div class="risk-heading">
+                <span>Rule-based demo risk indicator</span>
+                <strong>{{ result.risk_level }} RISK</strong>
+            </div>
+            <p>{{ result.risk_reason }} Risk level is based only on the required-field count.</p>
+            <small>This is not proof of fraud, authenticity, or eligibility, and is not an official approval decision. No trained AI model is used.</small>
+        </div>
+
+        <dl class="document-summary">
+            <div><dt>File</dt><dd>{{ result.filename }}</dd></div>
+            <div><dt>Type</dt><dd>{{ result.document_type }}</dd></div>
+            <div><dt>Size</dt><dd>{{ "{:.1f}".format(result.size_bytes / 1024) }} KB</dd></div>
+            {% if result.page_count is not none %}
+            <div><dt>Pages</dt><dd>{{ result.page_count }}</dd></div>
+            {% endif %}
+            <div><dt>Extracted characters</dt><dd>{{ result.extracted_characters }}</dd></div>
+        </dl>
+
+        <div class="field-counts">
+            <div class="count-found"><strong>{{ result.fields_found }}</strong><span>Fields found</span></div>
+            <div class="count-missing"><strong>{{ result.fields_missing }}</strong><span>Fields missing</span></div>
+        </div>
+
+        <h3>Required-field results</h3>
+        <div class="table-wrap">
+            <table class="report-table">
+                <thead>
+                    <tr><th>REQUIRED FIELD</th><th>STATUS</th></tr>
+                </thead>
+                <tbody>
+                    {% for check in result.field_checks %}
+                    <tr>
+                        <td>{{ check.label }}</td>
+                        <td>
+                            <span class="field-status {{ 'status-found' if check.present else 'status-missing' }}">
+                                {{ "Found" if check.present else "Missing" }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <h3>Findings</h3>
+        <ul class="finding-list">
+            {% for finding in result.findings %}
+            <li>{{ finding }}</li>
+            {% endfor %}
+        </ul>
+
+        <div class="report-actions">
+            <a class="button-link" href="{{ url_for('download_validation_report', report_id=result.report_id) }}">Download PDF Report</a>
+            <a class="button-link button-secondary" href="{{ url_for('document_validation') }}">Validate another file</a>
+        </div>
+    </section>
+    {% endif %}
+
+    <footer>SMART-AI · Synthetic-data application validation prototype</footer>
+</main>
+
+</body>
+</html>

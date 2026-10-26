@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Application | SMART-AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+    <div class="brand">
+        <div class="logo">A</div>
+        <div>
+            <h2>SMART-AI</h2>
+            <p>Application Validation System</p>
+        </div>
+    </div>
+    <div class="account-nav">
+        <span class="demo">{{ session.username }} · Institution</span>
+        <form method="post" action="{{ url_for('logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="logout-button" type="submit">Log out</button>
+        </form>
+    </div>
+</header>
+
+<main class="container">
+    <section class="welcome">
+        <div>
+            <p class="eyebrow">SYNTHETIC LOCAL DEMO</p>
+            <h1>{{ "Edit Application for Resubmission" if is_edit else "Institution Application Form" }}</h1>
+            <p>{{ "Update the requested details and attach a revised PDF for reviewer re-evaluation." if is_edit else "Enter fictional application details for the local reviewer workflow." }}</p>
+        </div>
+        {% if is_edit %}
+        <a class="button-link button-secondary" href="{{ url_for('institution_application_details', application_id=application_id) }}">Back to application details</a>
+        {% else %}
+        <a class="button-link button-secondary" href="{{ url_for('institution_portal') }}">Back to institution home</a>
+        {% endif %}
+    </section>
+
+    <div class="notice">
+        <strong>Local prototype only:</strong>
+        Use fictional details and a synthetic supporting PDF. This application is stored locally,
+        is not submitted to AICTE, and is not an official approval request.
+    </div>
+
+    <section class="panel institution-form-panel">
+        <div class="panel-heading">
+            <h2>{{ "Revise application details" if is_edit else "Application details" }}</h2>
+            <p>All fields are required. {% if is_edit %}A revised supporting PDF is required{% else %}An optional supporting PDF{% endif %} may be up to {{ max_upload_mb }} MB.</p>
+        </div>
+
+        {% if errors %}
+        <div class="validation-message error-message" role="alert" aria-live="polite">
+            <strong>Please review the following:</strong>
+            <ul>
+                {% for message in errors %}
+                <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <form class="reviewer-form institution-application-form" method="post"
+              action="{{ url_for('edit_institution_application', application_id=application_id) if is_edit else url_for('submit_institution_application') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <label for="institution_name">Institution Name</label>
+            <input id="institution_name" name="institution_name" type="text" maxlength="200"
+                   value="{{ values.get('institution_name', '') }}" required>
+
+            <label for="category">Application Category</label>
+            <input id="category" name="category" type="text" maxlength="100" list="application-categories"
+                   value="{{ values.get('category', '') }}" required>
+            <datalist id="application-categories">
+                {% for category in application_categories %}
+                <option value="{{ category }}">
+                {% endfor %}
+            </datalist>
+
+            <label for="academic_year">Academic Year</label>
+            <input id="academic_year" name="academic_year" type="text" maxlength="20"
+                   placeholder="For example, 2026–27" value="{{ values.get('academic_year', '') }}" required>
+
+            <label for="institution_address">Institution Address</label>
+            <textarea id="institution_address" name="institution_address" rows="3" maxlength="500"
+                      required>{{ values.get('institution_address', '') }}</textarea>
+
+            <label for="contact_person">Contact Person</label>
+            <input id="contact_person" name="contact_person" type="text" maxlength="200"
+                   value="{{ values.get('contact_person', '') }}" required>
+
+            <label for="contact_email">Contact Email</label>
+            <input id="contact_email" name="contact_email" type="email" maxlength="254"
+                   value="{{ values.get('contact_email', '') }}" required>
+
+            <label for="description">Application Description</label>
+            <textarea id="description" name="description" rows="5" maxlength="5000"
+                      required>{{ values.get('description', '') }}</textarea>
+
+            {% if is_edit and current_document %}
+            <p class="form-help">Current supporting document: {{ current_document }}. The revised PDF replaces it after a successful resubmission.</p>
+            {% endif %}
+            <label for="supporting_document">{{ "Revised Supporting PDF (required)" if is_edit else "Supporting PDF (optional)" }}</label>
+            <input id="supporting_document" name="supporting_document" type="file"
+                   accept=".pdf,application/pdf" {% if is_edit %}required{% endif %}>
+            <p class="form-help">PDF only, maximum {{ max_upload_mb }} MB. If validation fails, reselect the file before retrying.</p>
+
+            <button type="submit">{{ "Resubmit for Review" if is_edit else "Submit Application" }}</button>
+        </form>
+    </section>
+
+    <footer>SMART-AI · Synthetic local demo only · No live AICTE connection</footer>
+</main>
+
+</body>
+</html>

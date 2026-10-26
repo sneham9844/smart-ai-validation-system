@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Details | Smart AICTE Prototype</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+    <div class="brand">
+        <div class="logo">A</div>
+        <div>
+            <h2>SMART-AI</h2>
+            <p>Application Validation System</p>
+        </div>
+    </div>
+    <div class="account-nav">
+        <span class="demo">{{ session.username }} · Reviewer</span>
+        <form method="post" action="{{ url_for('logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="logout-button" type="submit">Log out</button>
+        </form>
+    </div>
+</header>
+
+<main class="container">
+    <section class="welcome">
+        <div>
+            <p class="eyebrow">SYNTHETIC DEMO APPLICATION</p>
+            <h1>Application Details</h1>
+            <p>Sample record details for reviewer reference.</p>
+        </div>
+        <a class="button-link button-secondary" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+    </section>
+
+    <div class="notice">
+        <strong>Demo only:</strong>
+        This page displays fictional sample application data. It is not connected to a live AICTE system
+        and does not establish authenticity, eligibility, or official approval.
+        Reviewer decisions below are simulated and are not official AICTE decisions.
+    </div>
+
+    <section class="panel application-details-panel">
+        <div class="panel-heading">
+            <h2>{{ application.id }}</h2>
+            <p>Application information available in the dashboard sample record.</p>
+        </div>
+
+        <dl class="application-details">
+            <div>
+                <dt>Application ID</dt>
+                <dd>{{ application.id }}</dd>
+            </div>
+            <div>
+                <dt>Institution Name</dt>
+                <dd>{{ application.college or "Not available" }}</dd>
+            </div>
+            <div>
+                <dt>Application Category</dt>
+                <dd>{{ application.category or "Not available" }}</dd>
+            </div>
+            <div>
+                <dt>Academic Year</dt>
+                <dd>{{ application.get("academic_year", "Not available") or "Not available" }}</dd>
+            </div>
+            <div>
+                <dt>Validation Status</dt>
+                <dd>{{ application.status or "Not available" }}</dd>
+            </div>
+            <div>
+                <dt>Simulated Reviewer Decision</dt>
+                <dd>{{ application.get("reviewer_decision", "Not available") or "Not available" }}</dd>
+            </div>
+            <div>
+                <dt>Reviewer Comments</dt>
+                <dd>{{ application.get("reviewer_comment", "Not available") or "Not available" }}</dd>
+            </div>
+            <div>
+                <dt>Missing Required Fields</dt>
+                <dd>{{ application.get("missing_fields", "Not available") or "Not available" }}</dd>
+            </div>
+            <div>
+                <dt>Demo Risk Level</dt>
+                <dd>{{ application.get("risk_level", "Not available") or "Not available" }}</dd>
+            </div>
+        </dl>
+    </section>
+
+    <section class="panel reviewer-panel">
+        <div class="panel-heading">
+            <h2>Simulated Reviewer Workflow</h2>
+            <p>Save a demo decision for this fictional application. This does not represent official AICTE approval.</p>
+        </div>
+
+        {% if error %}
+        <div class="validation-message error-message" role="alert">{{ error }}</div>
+        {% endif %}
+
+        <form class="reviewer-form" method="post" action="{{ url_for('application_details', application_id=application.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="reviewer_decision">Demo decision</label>
+            <select id="reviewer_decision" name="reviewer_decision" required>
+                <option value="">Choose a decision</option>
+                {% for decision in reviewer_decisions %}
+                <option value="{{ decision }}" {% if application.get("reviewer_decision") == decision or (not application.get("reviewer_decision") and comment and request.form.get("reviewer_decision") == decision) %}selected{% endif %}>
+                    {{ decision }}
+                </option>
+                {% endfor %}
+            </select>
+
+            <label for="reviewer_comment">Reviewer comments (optional)</label>
+            <textarea id="reviewer_comment" name="reviewer_comment" rows="4" maxlength="1000" placeholder="Add an optional demo comment">{{ comment or application.get("reviewer_comment", "") }}</textarea>
+
+            <button type="submit">Save Demo Decision</button>
+        </form>
+    </section>
+
+    <footer>SMART-AI · Synthetic-data application validation prototype</footer>
+</main>
+
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Institution Demo | SMART-AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+    <div class="brand">
+        <div class="logo">A</div>
+        <div>
+            <h2>SMART-AI</h2>
+            <p>Application Validation System</p>
+        </div>
+    </div>
+    <div class="account-nav">
+        <span class="demo">{{ session.username }} · Institution</span>
+        <form method="post" action="{{ url_for('logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="logout-button" type="submit">Log out</button>
+        </form>
+    </div>
+</header>
+
+<main class="container">
+    <section class="welcome">
+        <div>
+            <p class="eyebrow">SYNTHETIC LOCAL DEMO</p>
+            <h1>Institution Workspace</h1>
+            <p>Submit an application and track its simulated review status.</p>
+        </div>
+    </section>
+
+    <div class="notice">
+        <strong>Local prototype only:</strong>
+        Use fictional information and synthetic documents only. Submissions are stored in this local
+        demo database. This demo is not connected to a live AICTE service and does not make official decisions.
+    </div>
+
+    <section class="panel institution-panel">
+        <div class="panel-heading">
+            <h2>Institution Application</h2>
+            <p>Submit your application details with an optional supporting PDF, up to 5 MB.</p>
+        </div>
+        <a class="button-link" href="{{ url_for('submit_institution_application') }}">Create an application</a>
+        <a class="button-link button-secondary" href="{{ url_for('document_validation') }}">Run document validation demo</a>
+    </section>
+
+    <section class="panel institution-submissions-panel">
+        <div class="panel-heading">
+            <h2>My Applications</h2>
+            <p>Only applications submitted by this institution account are shown here.</p>
+        </div>
+        {% if submissions %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>APPLICATION ID</th>
+                        <th>CATEGORY</th>
+                        <th>ACADEMIC YEAR</th>
+                        <th>STATUS</th>
+                        <th>SUBMITTED</th>
+                        <th>DETAILS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for submission in submissions %}
+                    <tr>
+                        <td class="app-id">{{ submission.application_id }}</td>
+                        <td>{{ submission.category }}</td>
+                        <td>{{ submission.academic_year }}</td>
+                        <td><span class="badge {{ submission.status|lower|replace(' ', '-') }}">{{ submission.status }}</span></td>
+                        <td>
+                            {% if submission.resubmission_count %}
+                            <span class="badge submitted">Resubmitted · {{ submission.resubmission_count }}</span><br>
+                            {{ submission.resubmitted_at }}
+                            {% else %}
+                            {{ submission.submitted_at }}
+                            {% endif %}
+                        </td>
+                        <td><a class="details-link" href="{{ url_for('institution_application_details', application_id=submission.application_id) }}">View Details</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="history-empty">You have not submitted an application yet.</p>
+        {% endif %}
+    </section>
+
+    <footer>SMART-AI · Synthetic local demo only</footer>
+</main>
+
+</body>
+</html>

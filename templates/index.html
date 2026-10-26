@@ -1,0 +1,314 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AICTE | Smart Application Validation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+    <div class="brand">
+        <div class="logo">A</div>
+        <div>
+            <h2>SMART-AI</h2>
+            <p>Application Validation System</p>
+        </div>
+    </div>
+    <div class="account-nav">
+        <span class="demo">{{ session.username }} · Reviewer</span>
+        <form method="post" action="{{ url_for('logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="logout-button" type="submit">Log out</button>
+        </form>
+    </div>
+</header>
+
+<main class="container">
+    <section class="welcome">
+        <div>
+            <p class="eyebrow">INSTITUTIONAL APPROVALS</p>
+            <h1>Application Dashboard</h1>
+            <p>Validate applications, identify document issues, and assist reviewers.</p>
+        </div>
+        <div class="welcome-actions">
+            <a class="button-link" href="{{ url_for('document_validation') }}">Document Validation</a>
+            <button onclick="location.reload()">↻ Refresh</button>
+        </div>
+    </section>
+
+    <div class="notice">
+        <strong>Demo mode:</strong>
+        No live AICTE database is connected. Seeded sample records are fictional; new local institution
+        submissions appear in the reviewer inbox below.
+    </div>
+
+    <section class="stats">
+        <article class="stat-card">
+            <p>Total Applications</p>
+            <h2>{{ stats.total }}</h2>
+        </article>
+        <article class="stat-card">
+            <p>Under Review</p>
+            <h2>{{ stats.under_review }}</h2>
+        </article>
+        <article class="stat-card">
+            <p>Pending</p>
+            <h2>{{ stats.pending }}</h2>
+        </article>
+        <article class="stat-card">
+            <p>Needs Correction</p>
+            <h2>{{ stats.needs_correction }}</h2>
+        </article>
+        <article class="stat-card">
+            <p>Approved for Demo</p>
+            <h2>{{ stats.approved_for_demo }}</h2>
+        </article>
+        <article class="stat-card">
+            <p>Flagged for Review</p>
+            <h2>{{ stats.flagged }}</h2>
+        </article>
+    </section>
+
+    <section class="reviewer-analytics" aria-label="Fictional demo reviewer analytics">
+        <div class="analytics-heading">
+            <h2>Reviewer Analytics</h2>
+            <p>Counts include fictional seeded records and local institution submissions. Reviewer decisions are simulated, not official AICTE decisions.</p>
+        </div>
+        <div class="analytics-grid">
+            <article class="panel analytics-panel">
+                <div class="panel-heading">
+                    <h2>Applications by Current Status</h2>
+                    <p>Counts update when reviewers save a simulated decision.</p>
+                </div>
+                <div class="chart-list">
+                    {% for item in status_chart %}
+                    <div class="chart-row">
+                        <div class="chart-label">
+                            <span>{{ item.label }}</span>
+                            <strong>{{ item.count }}</strong>
+                        </div>
+                        <div class="chart-track" role="img" aria-label="{{ item.label }}: {{ item.count }} applications">
+                            <span class="chart-bar status-bar" style="width: {{ item.width }}%"></span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </article>
+
+            <article class="panel analytics-panel">
+                <div class="panel-heading">
+                    <h2>Demo Risk Assessment</h2>
+                    <p>Counts saved validation-report risk levels only. These report risks are not assigned to individual applications.</p>
+                </div>
+                <div class="chart-list">
+                    {% for item in risk_chart %}
+                    <div class="chart-row">
+                        <div class="chart-label">
+                            <span>{{ item.label }}</span>
+                            <strong>{{ item.count }}</strong>
+                        </div>
+                        <div class="chart-track" role="img" aria-label="{{ item.label }}: {{ item.count }} applications">
+                            <span class="chart-bar risk-bar risk-bar-{{ item.label|lower|replace(' ', '-') }}" style="width: {{ item.width }}%"></span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Application Records</h2>
+                <p>Search and filter the sample applications.</p>
+            </div>
+        </div>
+
+        <div class="filters">
+            <input id="search" type="search"
+                   placeholder="Search college or application ID...">
+
+            <select id="status">
+                <option value="">All statuses</option>
+                <option value="Under Review">Under Review</option>
+                <option value="Pending">Pending</option>
+                <option value="Flagged">Flagged</option>
+                <option value="Validated">Validated</option>
+                <option value="Needs Correction">Needs Correction</option>
+                <option value="Approved for Demo">Approved for Demo</option>
+            </select>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>APPLICATION ID</th>
+                        <th>INSTITUTION</th>
+                        <th>CATEGORY</th>
+                        <th>STATUS</th>
+                        <th>ISSUES</th>
+                        <th>DETAILS</th>
+                    </tr>
+                </thead>
+                <tbody id="records">
+                    {% for a in applications %}
+                    {% set current_status = a.get("reviewer_decision") or a.status %}
+                    <tr data-status="{{ current_status }}"
+                        data-search="{{ (a.id ~ ' ' ~ a.college ~ ' ' ~ a.category)|lower }}">
+                        <td class="app-id">{{ a.id }}</td>
+                        <td>{{ a.college }}</td>
+                        <td>{{ a.category }}</td>
+                        <td>
+                            <span class="badge {{ current_status|lower|replace(' ', '-') }}">
+                                {{ current_status }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="issue">{{ a.issues }}</span>
+                        </td>
+                        <td>
+                            <a class="details-link" href="{{ url_for('application_details', application_id=a.id) }}">
+                                View Details
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <p id="empty" hidden>No matching applications found.</p>
+        </div>
+    </section>
+
+    <section class="panel reviewer-inbox-panel">
+        <div class="panel-heading">
+            <h2>Institution Application Inbox</h2>
+            <p>Local submissions from institution demo accounts. Open an application to review its submitted details.</p>
+        </div>
+        {% if submitted_applications %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>APPLICATION ID</th>
+                        <th>INSTITUTION</th>
+                        <th>CATEGORY</th>
+                        <th>ACADEMIC YEAR</th>
+                        <th>STATUS</th>
+                        <th>SUBMITTED / RESUBMITTED</th>
+                        <th>DETAILS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for submission in submitted_applications %}
+                    <tr>
+                        <td class="app-id">{{ submission.application_id }}</td>
+                        <td>{{ submission.institution_name }}</td>
+                        <td>{{ submission.category }}</td>
+                        <td>{{ submission.academic_year }}</td>
+                        <td><span class="badge {{ submission.status|lower|replace(' ', '-') }}">{{ submission.status }}</span></td>
+                        <td>
+                            {% if submission.resubmission_count %}
+                            <span class="badge submitted">Resubmitted · {{ submission.resubmission_count }}</span><br>
+                            {{ submission.resubmitted_at }}
+                            {% else %}
+                            {{ submission.submitted_at }}
+                            {% endif %}
+                        </td>
+                        <td><a class="details-link" href="{{ url_for('reviewer_submission_details', application_id=submission.application_id) }}">Review Details</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="history-empty">No institution applications have been submitted yet.</p>
+        {% endif %}
+    </section>
+
+    <section class="panel validation-history-panel">
+        <div class="panel-heading">
+            <h2>Document Validation History</h2>
+            <p>Recent synthetic demo checks for this running application session. No document contents are stored.</p>
+        </div>
+
+        {% if validation_history %}
+        <div class="table-wrap">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>FILENAME</th>
+                        <th>FILE TYPE</th>
+                        <th>FIELDS FOUND</th>
+                        <th>FIELDS MISSING</th>
+                        <th>DEMO RISK</th>
+                        <th>STATUS</th>
+                        <th>VALIDATED AT</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in validation_history %}
+                    <tr>
+                        <td>{{ entry.filename }}</td>
+                        <td>{{ entry.document_type }}</td>
+                        <td>{{ entry.fields_found }}</td>
+                        <td>{{ entry.fields_missing }}</td>
+                        <td>
+                            <span class="history-risk risk-{{ (entry.risk_level or 'Not assessed')|lower|replace(' ', '-') }}">
+                                {{ entry.risk_level or "Not assessed" }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="history-status {{ 'history-complete' if entry.status == 'Complete' else 'history-incomplete' }}">
+                                {{ entry.status }}
+                            </span>
+                        </td>
+                        <td>{{ entry.validated_at }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="history-empty">No documents have been validated in this session yet.</p>
+        {% endif %}
+    </section>
+
+    <footer>
+        SMART-AI · Synthetic-data application validation prototype
+    </footer>
+</main>
+
+<script>
+    const search = document.getElementById("search");
+    const status = document.getElementById("status");
+    const rows = [...document.querySelectorAll("#records tr")];
+    const empty = document.getElementById("empty");
+
+    function filterRecords() {
+        const query = search.value.toLowerCase().trim();
+        let visible = 0;
+
+        rows.forEach(row => {
+            const matchText = row.dataset.search.includes(query);
+            const matchStatus = !status.value ||
+                                row.dataset.status === status.value;
+            const show = matchText && matchStatus;
+
+            row.hidden = !show;
+            if (show) visible++;
+        });
+
+        empty.hidden = visible !== 0;
+    }
+
+    search.addEventListener("input", filterRecords);
+    status.addEventListener("change", filterRecords);
+</script>
+
+</body>
+</html>

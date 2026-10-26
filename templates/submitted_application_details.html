@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submitted Application | SMART-AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+    <div class="brand">
+        <div class="logo">A</div>
+        <div>
+            <h2>SMART-AI</h2>
+            <p>Application Validation System</p>
+        </div>
+    </div>
+    <div class="account-nav">
+        <span class="demo">{{ session.username }} · {{ session.role }}</span>
+        <form method="post" action="{{ url_for('logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="logout-button" type="submit">Log out</button>
+        </form>
+    </div>
+</header>
+
+<main class="container">
+    <section class="welcome">
+        <div>
+            <p class="eyebrow">SYNTHETIC LOCAL DEMO APPLICATION</p>
+            <h1>Submitted Application</h1>
+            <p>Application {{ application.application_id }} · Submitted {{ application.resubmitted_at or application.submitted_at }}</p>
+        </div>
+        {% if session.role == "Reviewer" %}
+        <a class="button-link button-secondary" href="{{ url_for('dashboard') }}">Back to reviewer dashboard</a>
+        {% else %}
+        <a class="button-link button-secondary" href="{{ url_for('institution_portal') }}">Back to my applications</a>
+        {% endif %}
+    </section>
+
+    <div class="notice">
+        <strong>Demo only:</strong>
+        This is fictional local application data. It is not connected to AICTE and its simulated status
+        is not an official decision or approval.
+    </div>
+
+    <section class="panel application-details-panel">
+        <div class="panel-heading">
+            <h2>{{ application.application_id }}</h2>
+            <p>Current application status</p>
+        </div>
+        <p>
+            <span class="badge {{ application.status|lower|replace(' ', '-') }}">{{ application.status }}</span>
+            {% if application.resubmission_count %}
+            <span class="badge submitted">Resubmitted · {{ application.resubmission_count }}</span>
+            {% endif %}
+        </p>
+        <dl class="application-details">
+            <div><dt>Institution Name</dt><dd>{{ application.institution_name }}</dd></div>
+            <div><dt>Application Category</dt><dd>{{ application.category }}</dd></div>
+            <div><dt>Academic Year</dt><dd>{{ application.academic_year }}</dd></div>
+            <div><dt>Institution Address</dt><dd>{{ application.institution_address }}</dd></div>
+            <div><dt>Contact Person</dt><dd>{{ application.contact_person }}</dd></div>
+            <div><dt>Contact Email</dt><dd>{{ application.contact_email }}</dd></div>
+            <div class="application-description"><dt>Application Description</dt><dd>{{ application.description }}</dd></div>
+        </dl>
+        <div class="document-download">
+            <strong>Supporting document:</strong>
+            {% if application.supporting_document_filename %}
+                {% if session.role == "Reviewer" %}
+                <a class="details-link" href="{{ url_for('download_reviewer_application_document', application_id=application.application_id) }}">{{ application.supporting_document_filename }}</a>
+                {% else %}
+                <a class="details-link" href="{{ url_for('download_institution_application_document', application_id=application.application_id) }}">{{ application.supporting_document_filename }}</a>
+                {% endif %}
+            {% else %}
+            <span>Not provided</span>
+            {% endif %}
+        </div>
+        {% if session.role == "Institution" %}
+        <div class="reviewer-feedback">
+            <strong>Reviewer comment</strong>
+            <p>{{ application.reviewer_comment or "No reviewer comment provided." }}</p>
+        </div>
+        {% endif %}
+        {% if session.role == "Reviewer" and application.previous_reviewer_comment %}
+        <div class="reviewer-feedback">
+            <strong>Previous reviewer comment</strong>
+            <p>{{ application.previous_reviewer_comment }}</p>
+        </div>
+        {% endif %}
+        {% if session.role == "Institution" and application.status == "Correction Required" %}
+        <a class="button-link correction-edit-link" href="{{ url_for('edit_institution_application', application_id=application.application_id) }}">Edit and resubmit application</a>
+        {% endif %}
+    </section>
+
+    {% if session.role == "Reviewer" %}
+    <section class="panel validation-panel">
+        <div class="panel-heading">
+            <h2>Stored Document Validation</h2>
+            <p>Run the sample required-field checks against the PDF currently stored for this application.</p>
+        </div>
+        {% if application.supporting_document_filename %}
+        <form method="post"
+              action="{{ url_for('validate_institution_application_document', application_id=application.application_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit">Validate Uploaded Document</button>
+        </form>
+        {% else %}
+        <p class="history-empty">No supporting PDF is stored with this application.</p>
+        {% endif %}
+
+        {% if validation_result %}
+        <div class="validation-result" aria-live="polite">
+            <p>
+                <strong>Application:</strong> {{ application.application_id }}
+                <span class="badge {{ 'history-complete' if validation_result.status == 'Complete' else 'history-incomplete' }}">
+                    {{ validation_result.status }}
+                </span>
+            </p>
+            <p><strong>Latest checked PDF:</strong> {{ validation_result.filename }}</p>
+            <p><strong>Rule-based demo risk:</strong> {{ validation_result.risk_level }} —
+                {{ validation_result.risk_reason }}</p>
+            <p>This checks required fields only. It does not detect fraud, verify authenticity,
+                or represent an official AICTE decision.</p>
+            <div class="table-wrap">
+                <table class="report-table">
+                    <thead><tr><th>REQUIRED FIELD</th><th>RESULT</th></tr></thead>
+                    <tbody>
+                        {% for check in validation_result.field_checks %}
+                        <tr>
+                            <td>{{ check.label }}</td>
+                            <td>
+                                <span class="field-status {{ 'status-found' if check.present else 'status-missing' }}">
+                                    {{ "Found" if check.present else "Missing" }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if validation_result.missing_fields %}
+            <h3>Issues to review</h3>
+            <ul class="finding-list">
+                {% for field in validation_result.missing_fields %}
+                <li>{{ field }} was not found in the PDF.</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            <ul class="finding-list">
+                {% for finding in validation_result.findings %}
+                <li>{{ finding }}</li>
+                {% endfor %}
+            </ul>
+            <p class="report-actions">
+                <a class="button-link" href="{{ url_for('download_validation_report', report_id=validation_result.report_id) }}">Download Validation Report</a>
+            </p>
+        </div>
+        {% else %}
+        <p class="history-empty">Validate the stored PDF to see its latest required-field results and report.</p>
+        {% endif %}
+    </section>
+
+    <section class="panel reviewer-panel">
+        <div class="panel-heading">
+            <h2>Simulated Reviewer Workflow</h2>
+            <p>Approval can be saved only after the latest stored PDF passes all sample required-field checks. Other decisions remain available for the local demo workflow.</p>
+        </div>
+        {% if application.previous_reviewer_comment %}
+        <div class="reviewer-feedback">
+            <strong>Previous reviewer comment</strong>
+            <p>{{ application.previous_reviewer_comment }}</p>
+        </div>
+        {% endif %}
+        {% if error %}
+        <div class="validation-message error-message" role="alert">{{ error }}</div>
+        {% endif %}
+        <form class="reviewer-form" method="post"
+              action="{{ url_for('reviewer_submission_details', application_id=application.application_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="reviewer_decision">Demo decision</label>
+            <select id="reviewer_decision" name="reviewer_decision" required>
+                <option value="">Choose a decision</option>
+                {% for decision in reviewer_decisions %}
+                <option value="{{ decision }}" {% if application.get("reviewer_decision") == decision or request.form.get("reviewer_decision") == decision %}selected{% endif %}>{{ decision }}</option>
+                {% endfor %}
+            </select>
+            <label for="reviewer_comment">Reviewer comments (optional)</label>
+            <textarea id="reviewer_comment" name="reviewer_comment" rows="4" maxlength="1000"
+                      placeholder="Add an optional demo comment">{{ comment or application.get("reviewer_comment", "") }}</textarea>
+            <button type="submit">Save Demo Decision</button>
+        </form>
+    </section>
+    {% endif %}
+
+    <footer>SMART-AI · Synthetic-data application validation prototype</footer>
+</main>
+
+</body>
+</html>
