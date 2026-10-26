@@ -18,11 +18,8 @@
         </div>
     </div>
     <div class="account-nav">
-        <span class="demo">{{ session.username }} · Reviewer</span>
-        <form method="post" action="{{ url_for('logout') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="logout-button" type="submit">Log out</button>
-        </form>
+        <span class="demo">Public Demo · Reviewer</span>
+        <a class="button-link button-secondary" href="{{ url_for('role_selection') }}">Switch workspace</a>
     </div>
 </header>
 
@@ -187,7 +184,7 @@
     <section class="panel reviewer-inbox-panel">
         <div class="panel-heading">
             <h2>Institution Application Inbox</h2>
-            <p>Local submissions from institution demo accounts. Open an application to review its submitted details.</p>
+            <p>Public demo submissions are visible to every visitor. Use fictional information only.</p>
         </div>
         {% if submitted_applications %}
         <div class="table-wrap">
@@ -233,7 +230,7 @@
     <section class="panel validation-history-panel">
         <div class="panel-heading">
             <h2>Document Validation History</h2>
-            <p>Recent synthetic demo checks for this running application session. No document contents are stored.</p>
+            <p>Recent public demo checks. Uploaded document contents are not stored for standalone validation.</p>
         </div>
 
         {% if validation_history %}

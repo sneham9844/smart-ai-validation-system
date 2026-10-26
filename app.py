@@ -1,6 +1,5 @@
 
 from contextlib import contextmanager
-from functools import wraps
 import hmac
 import json
 import os
@@ -34,7 +33,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 import reportlab
 from werkzeug.exceptions import RequestEntityTooLarge
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -48,21 +47,9 @@ app.config["DATABASE"] = str(
     Path(app.instance_path) / "smart_ai_validation.sqlite3"
 )
 REVIEWER_DECISIONS = ("Under Review", "Needs Correction", "Approved for Demo")
-# Local-only fictional accounts for running the prototype; replace before any deployment.
-DEMO_ACCOUNTS = (
-    {
-        "username": "reviewer_demo",
-        "password": "ReviewerDemo!2026",
-        "role": "Reviewer",
-    },
-    {
-        "username": "institution_demo",
-        "password": "InstitutionDemo!2026",
-        "role": "Institution",
-    },
-)
+PUBLIC_DEMO_INSTITUTION_USERNAME = "institution_demo"
 MAX_HISTORY_ENTRIES = 20
-DATABASE_SCHEMA_VERSION = 6
+DATABASE_SCHEMA_VERSION = 8
 APPLICATION_CATEGORIES = (
     "New Institution",
     "Extension of Approval",
@@ -170,33 +157,42 @@ def initialize_database():
                 )
                 """
             )
-            for account in DEMO_ACCOUNTS:
-                existing_user = connection.execute(
-                    "SELECT 1 FROM users WHERE username = ?",
-                    (account["username"],),
-                ).fetchone()
-                if existing_user is None:
-                    connection.execute(
-                        """
-                        INSERT INTO users (username, password_hash, role)
-                        VALUES (?, ?, ?)
-                        """,
-                        (
-                            account["username"],
-                            generate_password_hash(account["password"]),
-                            account["role"],
-                        ),
-                    )
+            existing_demo_user = connection.execute(
+                "SELECT 1 FROM users WHERE username = ?",
+                (PUBLIC_DEMO_INSTITUTION_USERNAME,),
+            ).fetchone()
+            if existing_demo_user is None:
+                connection.execute(
+                    """
+                    INSERT INTO users (username, password_hash, role)
+                    VALUES (?, ?, 'Institution')
+                    """,
+                    (
+                        PUBLIC_DEMO_INSTITUTION_USERNAME,
+                        generate_password_hash(secrets.token_urlsafe(32)),
+                    ),
+                )
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS reviewer_decisions (
                     application_id TEXT PRIMARY KEY,
                     decision TEXT NOT NULL,
                     comment TEXT NOT NULL DEFAULT '',
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    public_demo INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )
+            reviewer_decision_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(reviewer_decisions)"
+                ).fetchall()
+            }
+            if "public_demo" not in reviewer_decision_columns:
+                connection.execute(
+                    "ALTER TABLE reviewer_decisions ADD COLUMN public_demo INTEGER NOT NULL DEFAULT 0"
+                )
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS validation_history (
@@ -208,6 +204,7 @@ def initialize_database():
                     validation_status TEXT NOT NULL,
                     risk_level TEXT,
                     field_results TEXT,
+                    public_demo INTEGER NOT NULL DEFAULT 0,
                     validated_at TEXT NOT NULL
                 )
                 """
@@ -225,6 +222,10 @@ def initialize_database():
             if "application_id" not in validation_history_columns:
                 connection.execute(
                     "ALTER TABLE validation_history ADD COLUMN application_id TEXT"
+                )
+            if "public_demo" not in validation_history_columns:
+                connection.execute(
+                    "ALTER TABLE validation_history ADD COLUMN public_demo INTEGER NOT NULL DEFAULT 0"
                 )
             connection.execute(
                 """
@@ -260,6 +261,7 @@ def initialize_database():
                     submitted_at TEXT NOT NULL,
                     resubmitted_at TEXT,
                     resubmission_count INTEGER NOT NULL DEFAULT 0,
+                    public_demo INTEGER NOT NULL DEFAULT 0,
                     FOREIGN KEY (institution_user_id) REFERENCES users(id)
                 )
                 """
@@ -279,6 +281,13 @@ def initialize_database():
                     """
                     ALTER TABLE institution_applications
                     ADD COLUMN resubmission_count INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+            if "public_demo" not in institution_application_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE institution_applications
+                    ADD COLUMN public_demo INTEGER NOT NULL DEFAULT 0
                     """
                 )
             if "latest_validation_report_id" not in institution_application_columns:
@@ -306,7 +315,11 @@ def initialize_database():
 def load_applications():
     with database_connection() as connection:
         decisions = connection.execute(
-            "SELECT application_id, decision, comment FROM reviewer_decisions"
+            """
+            SELECT application_id, decision, comment
+            FROM reviewer_decisions
+            WHERE public_demo = 1
+            """
         ).fetchall()
 
     decisions_by_id = {
@@ -323,6 +336,17 @@ def load_applications():
     return records
 
 
+def get_public_demo_institution_user_id():
+    with database_connection() as connection:
+        user = connection.execute(
+            "SELECT id FROM users WHERE username = ?",
+            (PUBLIC_DEMO_INSTITUTION_USERNAME,),
+        ).fetchone()
+    if user is None:
+        raise RuntimeError("The public demo institution record is unavailable.")
+    return user["id"]
+
+
 def load_institution_applications(institution_user_id):
     with database_connection() as connection:
         rows = connection.execute(
@@ -331,7 +355,7 @@ def load_institution_applications(institution_user_id):
                    status, submitted_at, supporting_document_filename,
                    resubmitted_at, resubmission_count
             FROM institution_applications
-            WHERE institution_user_id = ?
+                WHERE institution_user_id = ? AND public_demo = 1
             ORDER BY COALESCE(resubmitted_at, submitted_at) DESC
             """,
             (institution_user_id,),
@@ -340,14 +364,17 @@ def load_institution_applications(institution_user_id):
 
 
 def load_reviewer_inbox():
+    institution_user_id = get_public_demo_institution_user_id()
     with database_connection() as connection:
         rows = connection.execute(
             """
             SELECT application_id, institution_name, category, academic_year,
                    status, submitted_at, resubmitted_at, resubmission_count
             FROM institution_applications
+                WHERE institution_user_id = ? AND public_demo = 1
             ORDER BY COALESCE(resubmitted_at, submitted_at) DESC
-            """
+                """,
+                (institution_user_id,),
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -360,6 +387,7 @@ def load_validation_history():
                    fields_missing, validation_status AS status, risk_level,
                    validated_at
             FROM validation_history
+            WHERE public_demo = 1
             ORDER BY id DESC
             LIMIT ?
             """,
@@ -375,6 +403,7 @@ def load_validation_risk_counts():
             """
             SELECT risk_level, COUNT(*) AS report_count
             FROM validation_history
+            WHERE public_demo = 1
             GROUP BY risk_level
             """
         ).fetchall()
@@ -567,29 +596,6 @@ def create_validation_report_pdf(report):
 initialize_database()
 
 
-def login_required(view):
-    @wraps(view)
-    def wrapped_view(*args, **kwargs):
-        if "user_id" not in session:
-            return redirect(url_for("login"))
-        return view(*args, **kwargs)
-
-    return wrapped_view
-
-
-def roles_required(*allowed_roles):
-    def decorate(view):
-        @wraps(view)
-        def wrapped_view(*args, **kwargs):
-            if session.get("role") not in allowed_roles:
-                abort(403)
-            return view(*args, **kwargs)
-
-        return wrapped_view
-
-    return decorate
-
-
 def get_csrf_token():
     token = session.get("csrf_token")
     if token is None:
@@ -614,63 +620,18 @@ def validate_csrf_token():
             abort(400, description="Invalid or missing CSRF token.")
 
 
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if session.get("user_id"):
-        if session.get("role") == "Reviewer":
-            return redirect(url_for("dashboard"))
-        return redirect(url_for("institution_portal"))
-
-    error = None
-    if request.method == "POST":
-        username = request.form.get("username", "").strip().casefold()
-        password = request.form.get("password", "")
-        if not username or not password or len(username) > 128 or len(password) > 256:
-            error = "Enter a valid username and password."
-        else:
-            with database_connection() as connection:
-                user = connection.execute(
-                    """
-                    SELECT id, username, password_hash, role
-                    FROM users
-                    WHERE username = ?
-                    """,
-                    (username,),
-                ).fetchone()
-            if user is None or not check_password_hash(user["password_hash"], password):
-                error = "The username or password is incorrect."
-            else:
-                session.clear()
-                session["user_id"] = user["id"]
-                session["username"] = user["username"]
-                session["role"] = user["role"]
-                session.permanent = True
-                get_csrf_token()
-                if user["role"] == "Reviewer":
-                    return redirect(url_for("dashboard"))
-                return redirect(url_for("institution_portal"))
-
-    return render_template(
-        "login.html",
-        error=error,
-        demo_accounts=DEMO_ACCOUNTS,
-    ), 400 if error else 200
-
-
-@app.route("/logout", methods=["POST"])
-@login_required
-def logout():
-    session.clear()
-    return redirect(url_for("login"))
+@app.route("/")
+def role_selection():
+    return render_template("login.html")
 
 
 @app.route("/institution")
-@login_required
-@roles_required("Institution")
 def institution_portal():
     return render_template(
         "institution.html",
-        submissions=load_institution_applications(session["user_id"]),
+        submissions=load_institution_applications(
+            get_public_demo_institution_user_id()
+        ),
     )
 
 
@@ -681,7 +642,6 @@ def validate_institution_application(values, uploaded_file, require_document=Fal
         "academic_year": ("Academic Year", 20),
         "institution_address": ("Institution Address", 500),
         "contact_person": ("Contact Person", 200),
-        "contact_email": ("Contact Email", 254),
         "description": ("Application Description", 5000),
     }
     details = {}
@@ -693,13 +653,6 @@ def validate_institution_application(values, uploaded_file, require_document=Fal
             errors.append(f"{label} is required.")
         elif len(value) > limit:
             errors.append(f"{label} must be {limit} characters or fewer.")
-
-    email = details["contact_email"]
-    if email and (
-        len(email) > field_limits["contact_email"][1]
-        or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
-    ):
-        errors.append("Enter a valid contact email address.")
 
     document_bytes = None
     document_filename = None
@@ -735,8 +688,6 @@ def validate_institution_application(values, uploaded_file, require_document=Fal
 
 
 @app.route("/institution/applications/new", methods=["GET", "POST"])
-@login_required
-@roles_required("Institution")
 def submit_institution_application():
     values = request.form if request.method == "POST" else {}
     errors = []
@@ -753,6 +704,10 @@ def submit_institution_application():
             application_id = f"INST-{secrets.token_hex(8).upper()}"
             submitted_at = datetime.now().astimezone().isoformat(timespec="seconds")
             with database_connection() as connection:
+                institution_user = connection.execute(
+                    "SELECT id FROM users WHERE username = ?",
+                    (PUBLIC_DEMO_INSTITUTION_USERNAME,),
+                ).fetchone()
                 connection.execute(
                     """
                     INSERT INTO institution_applications (
@@ -760,19 +715,19 @@ def submit_institution_application():
                         category, academic_year, institution_address,
                         contact_person, contact_email, description,
                         supporting_document, supporting_document_filename,
-                        status, submitted_at
+                        status, submitted_at, public_demo
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submitted', ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submitted', ?, 1)
                     """,
                     (
                         application_id,
-                        session["user_id"],
+                        institution_user["id"],
                         details["institution_name"],
                         details["category"],
                         details["academic_year"],
                         details["institution_address"],
                         details["contact_person"],
-                        details["contact_email"],
+                        "",
                         details["description"],
                         document_bytes,
                         document_filename,
@@ -797,8 +752,6 @@ def submit_institution_application():
 
 
 @app.route("/institution/applications/<application_id>")
-@login_required
-@roles_required("Institution")
 def institution_application_details(application_id):
     with database_connection() as connection:
         application = connection.execute(
@@ -809,7 +762,6 @@ def institution_application_details(application_id):
                    institution_applications.academic_year,
                    institution_applications.institution_address,
                    institution_applications.contact_person,
-                   institution_applications.contact_email,
                    institution_applications.description,
                    institution_applications.supporting_document_filename,
                    institution_applications.status,
@@ -821,10 +773,12 @@ def institution_application_details(application_id):
             LEFT JOIN reviewer_decisions
                 ON reviewer_decisions.application_id =
                    institution_applications.application_id
+               AND reviewer_decisions.public_demo = 1
             WHERE institution_applications.application_id = ?
               AND institution_applications.institution_user_id = ?
+                            AND institution_applications.public_demo = 1
             """,
-            (application_id, session["user_id"]),
+                        (application_id, get_public_demo_institution_user_id()),
         ).fetchone()
     if application is None:
         abort(404)
@@ -832,6 +786,7 @@ def institution_application_details(application_id):
     return render_template(
         "submitted_application_details.html",
         application=application,
+        is_reviewer=False,
         reviewer_decisions=(),
         error=None,
         comment="",
@@ -839,19 +794,18 @@ def institution_application_details(application_id):
 
 
 @app.route("/institution/applications/<application_id>/edit", methods=["GET", "POST"])
-@login_required
-@roles_required("Institution")
 def edit_institution_application(application_id):
     with database_connection() as connection:
         existing_application = connection.execute(
             """
             SELECT application_id, institution_name, category, academic_year,
-                   institution_address, contact_person, contact_email,
+                     institution_address, contact_person,
                    description, supporting_document_filename, status
             FROM institution_applications
             WHERE application_id = ? AND institution_user_id = ?
+                AND public_demo = 1
             """,
-            (application_id, session["user_id"]),
+                 (application_id, get_public_demo_institution_user_id()),
         ).fetchone()
     if existing_application is None:
         abort(404)
@@ -878,7 +832,7 @@ def edit_institution_application(application_id):
                     UPDATE institution_applications
                     SET institution_name = ?, category = ?, academic_year = ?,
                         institution_address = ?, contact_person = ?,
-                        contact_email = ?, description = ?,
+                        description = ?,
                         supporting_document = ?,
                         supporting_document_filename = ?,
                         status = 'Submitted', resubmitted_at = ?,
@@ -886,6 +840,7 @@ def edit_institution_application(application_id):
                         latest_validation_report_id = NULL
                     WHERE application_id = ? AND institution_user_id = ?
                       AND status = 'Correction Required'
+                                            AND public_demo = 1
                     """,
                     (
                         details["institution_name"],
@@ -893,13 +848,12 @@ def edit_institution_application(application_id):
                         details["academic_year"],
                         details["institution_address"],
                         details["contact_person"],
-                        details["contact_email"],
                         details["description"],
                         document_bytes,
                         document_filename,
                         resubmitted_at,
                         application_id,
-                        session["user_id"],
+                        get_public_demo_institution_user_id(),
                     ),
                 )
             if result.rowcount != 1:
@@ -924,8 +878,6 @@ def edit_institution_application(application_id):
 
 
 @app.route("/institution/applications/<application_id>/document")
-@login_required
-@roles_required("Institution")
 def download_institution_application_document(application_id):
     with database_connection() as connection:
         document = connection.execute(
@@ -933,8 +885,9 @@ def download_institution_application_document(application_id):
             SELECT supporting_document, supporting_document_filename
             FROM institution_applications
             WHERE application_id = ? AND institution_user_id = ?
+                            AND public_demo = 1
             """,
-            (application_id, session["user_id"]),
+                        (application_id, get_public_demo_institution_user_id()),
         ).fetchone()
     if document is None:
         abort(404)
@@ -948,9 +901,7 @@ def download_institution_application_document(application_id):
     )
 
 
-@app.route("/")
-@login_required
-@roles_required("Reviewer")
+@app.route("/reviewer")
 def dashboard():
     dashboard_applications = load_applications()
     submitted_applications = load_reviewer_inbox()
@@ -1020,8 +971,6 @@ def dashboard():
 
 
 @app.route("/application/<application_id>", methods=["GET", "POST"])
-@login_required
-@roles_required("Reviewer")
 def application_details(application_id):
     application = next(
         (item for item in applications if item["id"] == application_id),
@@ -1036,7 +985,7 @@ def application_details(application_id):
             """
             SELECT decision, comment
             FROM reviewer_decisions
-            WHERE application_id = ?
+            WHERE application_id = ? AND public_demo = 1
             """,
             (application_id,),
         ).fetchone()
@@ -1055,12 +1004,13 @@ def application_details(application_id):
                 connection.execute(
                     """
                     INSERT INTO reviewer_decisions
-                        (application_id, decision, comment, updated_at)
-                    VALUES (?, ?, ?, ?)
+                        (application_id, decision, comment, updated_at, public_demo)
+                    VALUES (?, ?, ?, ?, 1)
                     ON CONFLICT(application_id) DO UPDATE SET
                         decision = excluded.decision,
                         comment = excluded.comment,
-                        updated_at = excluded.updated_at
+                        updated_at = excluded.updated_at,
+                        public_demo = 1
                     """,
                     (
                         application_id,
@@ -1081,8 +1031,6 @@ def application_details(application_id):
 
 
 @app.route("/reviewer/submissions/<application_id>", methods=["GET", "POST"])
-@login_required
-@roles_required("Reviewer")
 def reviewer_submission_details(application_id):
     error = None
     comment = request.form.get("reviewer_comment", "")
@@ -1095,7 +1043,6 @@ def reviewer_submission_details(application_id):
                    institution_applications.academic_year,
                    institution_applications.institution_address,
                    institution_applications.contact_person,
-                   institution_applications.contact_email,
                    institution_applications.description,
                    institution_applications.supporting_document_filename,
                    institution_applications.status,
@@ -1109,9 +1056,12 @@ def reviewer_submission_details(application_id):
             LEFT JOIN reviewer_decisions
                 ON reviewer_decisions.application_id =
                    institution_applications.application_id
+                 AND reviewer_decisions.public_demo = 1
             WHERE institution_applications.application_id = ?
+                AND institution_applications.institution_user_id = ?
+                AND institution_applications.public_demo = 1
             """,
-            (application_id,),
+                 (application_id, get_public_demo_institution_user_id()),
         ).fetchone()
     if application is None:
         abort(404)
@@ -1126,7 +1076,7 @@ def reviewer_submission_details(application_id):
                        validation_status AS status, risk_level,
                        field_results, validated_at
                 FROM validation_history
-                WHERE id = ? AND application_id = ?
+                WHERE id = ? AND application_id = ? AND public_demo = 1
                 """,
                 (
                     application["latest_validation_report_id"],
@@ -1184,12 +1134,13 @@ def reviewer_submission_details(application_id):
                 connection.execute(
                     """
                     INSERT INTO reviewer_decisions
-                        (application_id, decision, comment, updated_at)
-                    VALUES (?, ?, ?, ?)
+                        (application_id, decision, comment, updated_at, public_demo)
+                    VALUES (?, ?, ?, ?, 1)
                     ON CONFLICT(application_id) DO UPDATE SET
                         decision = excluded.decision,
                         comment = excluded.comment,
-                        updated_at = excluded.updated_at
+                        updated_at = excluded.updated_at,
+                        public_demo = 1
                     """,
                     (
                         application_id,
@@ -1202,7 +1153,7 @@ def reviewer_submission_details(application_id):
                     """
                     UPDATE institution_applications
                     SET status = ?
-                    WHERE application_id = ?
+                    WHERE application_id = ? AND public_demo = 1
                     """,
                     (status_by_decision[decision], application_id),
                 )
@@ -1224,6 +1175,7 @@ def reviewer_submission_details(application_id):
     return render_template(
         "submitted_application_details.html",
         application=application,
+        is_reviewer=True,
         validation_result=validation_result,
         reviewer_decisions=REVIEWER_DECISIONS,
         error=error,
@@ -1232,17 +1184,16 @@ def reviewer_submission_details(application_id):
 
 
 @app.route("/reviewer/submissions/<application_id>/document")
-@login_required
-@roles_required("Reviewer")
 def download_reviewer_application_document(application_id):
     with database_connection() as connection:
         document = connection.execute(
             """
             SELECT supporting_document, supporting_document_filename
             FROM institution_applications
-            WHERE application_id = ?
+                        WHERE application_id = ? AND institution_user_id = ?
+                            AND public_demo = 1
             """,
-            (application_id,),
+                        (application_id, get_public_demo_institution_user_id()),
         ).fetchone()
     if document is None:
         abort(404)
@@ -1359,9 +1310,9 @@ def save_validation_result(result, application_id=None):
             INSERT INTO validation_history (
                 filename, file_type, fields_found, fields_missing,
                 validation_status, risk_level, field_results, validated_at,
-                application_id
+                application_id, public_demo
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             """,
             (
                 result["filename"],
@@ -1381,7 +1332,7 @@ def save_validation_result(result, application_id=None):
                 """
                 UPDATE institution_applications
                 SET latest_validation_report_id = ?
-                WHERE application_id = ?
+                WHERE application_id = ? AND public_demo = 1
                 """,
                 (result["report_id"], application_id),
             )
@@ -1399,8 +1350,6 @@ def render_document_validation(error=None, result=None, status=200):
 
 
 @app.route("/document-validation", methods=["GET", "POST"])
-@login_required
-@roles_required("Reviewer", "Institution")
 def document_validation():
     if request.method == "GET":
         return render_document_validation()
@@ -1416,25 +1365,20 @@ def document_validation():
     if error:
         return render_document_validation(error, status=status)
     result = save_validation_result(result)
-    if session.get("role") == "Institution":
-        report_ids = session.get("institution_report_ids", [])
-        report_ids.append(result["report_id"])
-        session["institution_report_ids"] = report_ids[-MAX_HISTORY_ENTRIES:]
     return render_document_validation(result=result)
 
 
 @app.route("/reviewer/submissions/<application_id>/validate", methods=["POST"])
-@login_required
-@roles_required("Reviewer")
 def validate_institution_application_document(application_id):
     with database_connection() as connection:
         application = connection.execute(
             """
             SELECT supporting_document, supporting_document_filename
             FROM institution_applications
-            WHERE application_id = ?
+                        WHERE application_id = ? AND institution_user_id = ?
+                            AND public_demo = 1
             """,
-            (application_id,),
+                        (application_id, get_public_demo_institution_user_id()),
         ).fetchone()
     if application is None:
         abort(404)
@@ -1459,14 +1403,7 @@ def validate_institution_application_document(application_id):
 
 
 @app.route("/validation-report/<int:report_id>/download")
-@login_required
-@roles_required("Reviewer", "Institution")
 def download_validation_report(report_id):
-    if (
-        session.get("role") == "Institution"
-        and report_id not in session.get("institution_report_ids", [])
-    ):
-        abort(403)
     with database_connection() as connection:
         report = connection.execute(
             """
@@ -1474,7 +1411,7 @@ def download_validation_report(report_id):
                    validation_status, risk_level, field_results, validated_at,
                    application_id
             FROM validation_history
-            WHERE id = ?
+            WHERE id = ? AND public_demo = 1
             """,
             (report_id,),
         ).fetchone()
@@ -1496,10 +1433,6 @@ def handle_request_too_large(error):
         "submit_institution_application",
         "edit_institution_application",
     ):
-        if "user_id" not in session:
-            return redirect(url_for("login"))
-        if session.get("role") != "Institution":
-            abort(403)
         template_values = {
             "values": {},
             "errors": [
@@ -1517,9 +1450,10 @@ def handle_request_too_large(error):
                     """
                     SELECT status, supporting_document_filename
                     FROM institution_applications
-                    WHERE application_id = ? AND institution_user_id = ?
+                                        WHERE application_id = ? AND institution_user_id = ?
+                                            AND public_demo = 1
                     """,
-                    (application_id, session["user_id"]),
+                                        (application_id, get_public_demo_institution_user_id()),
                 ).fetchone()
             if application is None:
                 abort(404)

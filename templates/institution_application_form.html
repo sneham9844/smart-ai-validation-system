@@ -17,11 +17,8 @@
         </div>
     </div>
     <div class="account-nav">
-        <span class="demo">{{ session.username }} · Institution</span>
-        <form method="post" action="{{ url_for('logout') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="logout-button" type="submit">Log out</button>
-        </form>
+        <span class="demo">Public Demo · Institution</span>
+        <a class="button-link button-secondary" href="{{ url_for('role_selection') }}">Switch workspace</a>
     </div>
 </header>
 
@@ -40,9 +37,9 @@
     </section>
 
     <div class="notice">
-        <strong>Local prototype only:</strong>
-        Use fictional details and a synthetic supporting PDF. This application is stored locally,
-        is not submitted to AICTE, and is not an official approval request.
+        <strong>Public demo:</strong>
+        Anyone can view submitted details and supporting PDFs. Use fictional details and synthetic files only;
+        do not enter personal or confidential information. This is not an official AICTE request.
     </div>
 
     <section class="panel institution-form-panel">
@@ -90,10 +87,6 @@
             <label for="contact_person">Contact Person</label>
             <input id="contact_person" name="contact_person" type="text" maxlength="200"
                    value="{{ values.get('contact_person', '') }}" required>
-
-            <label for="contact_email">Contact Email</label>
-            <input id="contact_email" name="contact_email" type="email" maxlength="254"
-                   value="{{ values.get('contact_email', '') }}" required>
 
             <label for="description">Application Description</label>
             <textarea id="description" name="description" rows="5" maxlength="5000"

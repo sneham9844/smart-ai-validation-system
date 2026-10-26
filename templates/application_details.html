@@ -17,11 +17,8 @@
         </div>
     </div>
     <div class="account-nav">
-        <span class="demo">{{ session.username }} · Reviewer</span>
-        <form method="post" action="{{ url_for('logout') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="logout-button" type="submit">Log out</button>
-        </form>
+        <span class="demo">Public Demo · Reviewer</span>
+        <a class="button-link button-secondary" href="{{ url_for('role_selection') }}">Switch workspace</a>
     </div>
 </header>
 

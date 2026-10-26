@@ -17,11 +17,8 @@
         </div>
     </div>
     <div class="account-nav">
-        <span class="demo">{{ session.username }} · {{ session.role }}</span>
-        <form method="post" action="{{ url_for('logout') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="logout-button" type="submit">Log out</button>
-        </form>
+        <span class="demo">Public Demo · {{ "Reviewer" if is_reviewer else "Institution" }}</span>
+        <a class="button-link button-secondary" href="{{ url_for('role_selection') }}">Switch workspace</a>
     </div>
 </header>
 
@@ -32,7 +29,7 @@
             <h1>Submitted Application</h1>
             <p>Application {{ application.application_id }} · Submitted {{ application.resubmitted_at or application.submitted_at }}</p>
         </div>
-        {% if session.role == "Reviewer" %}
+        {% if is_reviewer %}
         <a class="button-link button-secondary" href="{{ url_for('dashboard') }}">Back to reviewer dashboard</a>
         {% else %}
         <a class="button-link button-secondary" href="{{ url_for('institution_portal') }}">Back to my applications</a>
@@ -62,13 +59,12 @@
             <div><dt>Academic Year</dt><dd>{{ application.academic_year }}</dd></div>
             <div><dt>Institution Address</dt><dd>{{ application.institution_address }}</dd></div>
             <div><dt>Contact Person</dt><dd>{{ application.contact_person }}</dd></div>
-            <div><dt>Contact Email</dt><dd>{{ application.contact_email }}</dd></div>
             <div class="application-description"><dt>Application Description</dt><dd>{{ application.description }}</dd></div>
         </dl>
         <div class="document-download">
             <strong>Supporting document:</strong>
             {% if application.supporting_document_filename %}
-                {% if session.role == "Reviewer" %}
+                {% if is_reviewer %}
                 <a class="details-link" href="{{ url_for('download_reviewer_application_document', application_id=application.application_id) }}">{{ application.supporting_document_filename }}</a>
                 {% else %}
                 <a class="details-link" href="{{ url_for('download_institution_application_document', application_id=application.application_id) }}">{{ application.supporting_document_filename }}</a>
@@ -77,24 +73,24 @@
             <span>Not provided</span>
             {% endif %}
         </div>
-        {% if session.role == "Institution" %}
+        {% if not is_reviewer %}
         <div class="reviewer-feedback">
             <strong>Reviewer comment</strong>
             <p>{{ application.reviewer_comment or "No reviewer comment provided." }}</p>
         </div>
         {% endif %}
-        {% if session.role == "Reviewer" and application.previous_reviewer_comment %}
+        {% if is_reviewer and application.previous_reviewer_comment %}
         <div class="reviewer-feedback">
             <strong>Previous reviewer comment</strong>
             <p>{{ application.previous_reviewer_comment }}</p>
         </div>
         {% endif %}
-        {% if session.role == "Institution" and application.status == "Correction Required" %}
+        {% if not is_reviewer and application.status == "Correction Required" %}
         <a class="button-link correction-edit-link" href="{{ url_for('edit_institution_application', application_id=application.application_id) }}">Edit and resubmit application</a>
         {% endif %}
     </section>
 
-    {% if session.role == "Reviewer" %}
+    {% if is_reviewer %}
     <section class="panel validation-panel">
         <div class="panel-heading">
             <h2>Stored Document Validation</h2>

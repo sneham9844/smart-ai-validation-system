@@ -156,6 +156,16 @@ button:hover {
     width: 100%;
 }
 
+.workspace-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.workspace-options .button-link {
+    text-align: center;
+}
+
 .demo-account-list {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

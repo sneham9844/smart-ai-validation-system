@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Local Demo Login | SMART-AI</title>
+    <title>Choose a Workspace | SMART-AI</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -20,44 +20,23 @@
 </header>
 
 <main class="container auth-container">
-    <section class="panel auth-panel">
+    <section class="panel auth-panel workspace-panel">
         <div class="panel-heading">
-            <p class="eyebrow">LOCAL DEMO ACCESS</p>
-            <h1>Sign in</h1>
-            <p>This prototype uses fictional records only. It is not a live AICTE service.</p>
+            <p class="eyebrow">PUBLIC DEMONSTRATION</p>
+            <h1>Choose a workspace</h1>
+            <p>This prototype is not a live AICTE service.</p>
         </div>
-
-        {% if error %}
-        <div class="validation-message error-message" role="alert">{{ error }}</div>
-        {% endif %}
-
-        <form class="reviewer-form" method="post" action="{{ url_for('login') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label for="username">Username</label>
-            <input id="username" name="username" type="text" maxlength="128"
-                   autocomplete="username" required>
-            <label for="password">Password</label>
-            <input id="password" name="password" type="password" maxlength="256"
-                   autocomplete="current-password" required>
-            <button type="submit">Sign in to demo</button>
-        </form>
+        <div class="workspace-options">
+            <a class="button-link" href="{{ url_for('dashboard') }}">Reviewer</a>
+            <a class="button-link button-secondary" href="{{ url_for('institution_portal') }}">Institution</a>
+        </div>
     </section>
 
-    <section class="panel demo-accounts-panel">
-        <div class="panel-heading">
-            <h2>Fictional local demo accounts</h2>
-            <p>These credentials are only for local prototype testing. Do not reuse them or deploy them.</p>
-        </div>
-        <div class="demo-account-list">
-            {% for account in demo_accounts %}
-            <article class="demo-account">
-                <h3>{{ account.role }}</h3>
-                <p><strong>Username:</strong> <code>{{ account.username }}</code></p>
-                <p><strong>Password:</strong> <code>{{ account.password }}</code></p>
-            </article>
-            {% endfor %}
-        </div>
-    </section>
+    <div class="notice">
+        <strong>Public demo:</strong>
+        Anyone can access both workspaces and view public demo submissions. Use fictional information only;
+        do not enter personal or confidential data or upload real documents.
+    </div>
 
     <footer>SMART-AI · Synthetic local demo only · No live AICTE connection</footer>
 </main>

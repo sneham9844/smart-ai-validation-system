@@ -17,11 +17,8 @@
         </div>
     </div>
     <div class="account-nav">
-        <span class="demo">{{ session.username }} · Institution</span>
-        <form method="post" action="{{ url_for('logout') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="logout-button" type="submit">Log out</button>
-        </form>
+        <span class="demo">Public Demo · Institution</span>
+        <a class="button-link button-secondary" href="{{ url_for('role_selection') }}">Switch workspace</a>
     </div>
 </header>
 
@@ -35,9 +32,9 @@
     </section>
 
     <div class="notice">
-        <strong>Local prototype only:</strong>
-        Use fictional information and synthetic documents only. Submissions are stored in this local
-        demo database. This demo is not connected to a live AICTE service and does not make official decisions.
+        <strong>Public demo:</strong>
+        Anyone can view submissions from this workspace. Use fictional information and synthetic documents only;
+        do not enter personal or confidential data. This is not connected to a live AICTE service.
     </div>
 
     <section class="panel institution-panel">
@@ -52,7 +49,7 @@
     <section class="panel institution-submissions-panel">
         <div class="panel-heading">
             <h2>My Applications</h2>
-            <p>Only applications submitted by this institution account are shown here.</p>
+            <p>Applications submitted here are visible to all visitors through the reviewer workspace.</p>
         </div>
         {% if submissions %}
         <div class="table-wrap">

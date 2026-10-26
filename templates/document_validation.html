@@ -17,11 +17,8 @@
         </div>
     </div>
     <div class="account-nav">
-        <span class="demo">{{ session.username }} · {{ session.role }}</span>
-        <form method="post" action="{{ url_for('logout') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="logout-button" type="submit">Log out</button>
-        </form>
+        <span class="demo">Public Demo</span>
+        <a class="button-link button-secondary" href="{{ url_for('role_selection') }}">Switch workspace</a>
     </div>
 </header>
 
@@ -32,11 +29,7 @@
             <h1>Document Validation</h1>
             <p>Extract text and check sample required fields for a reviewer.</p>
         </div>
-        {% if session.role == "Reviewer" %}
-        <a class="button-link button-secondary" href="{{ url_for('dashboard') }}">Back to dashboard</a>
-        {% else %}
-        <a class="button-link button-secondary" href="{{ url_for('institution_portal') }}">Institution home</a>
-        {% endif %}
+        <a class="button-link button-secondary" href="{{ url_for('role_selection') }}">Choose a workspace</a>
     </section>
 
     <div class="notice">
