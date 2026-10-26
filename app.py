@@ -139,6 +139,8 @@ applications = [
 @contextmanager
 def database_connection():
     database_path = Path(app.config["DATABASE"])
+    if os.environ.get("VERCEL"):
+        database_path = Path("/tmp") / database_path.name
     database_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
